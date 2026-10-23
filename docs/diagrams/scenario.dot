@@ -1,0 +1,14 @@
+digraph S {
+  rankdir=TB; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f3f3f7", color="#777777"]; edge [fontname="DejaVu Sans", fontsize=9];
+  u [label="Продюсер заполняет форму\n«Новый проект» и нажимает «Создать»"];
+  js [label="projects.js: formData() →\nfetch POST /api/projects (JSON)"];
+  api [label="api.py: projects_create()\nразбор JSON (иначе 400)"];
+  v [label="services.validate_project()\nназвание, заказчик, продюсер,\nбюджет ≥ 0, дедлайн ≥ начала"];
+  e [label="400 Bad Request\n{error, details{поле: сообщение}}", fillcolor="#fbe9e9"];
+  ins [label="INSERT INTO projects … RETURNING id\nCOMMIT (при ошибке ROLLBACK)"];
+  ok [label="201 Created + Location\nJSON карточки проекта", fillcolor="#e6f4ea"];
+  ui1 [label="Подсветка полей и\nсообщения под формой", fillcolor="#fbe9e9"];
+  ui2 [label="Переход на /projects/{id}\nGET /api/projects/{id} → карточка и задачи", fillcolor="#e6f4ea"];
+  db [label="PostgreSQL\nCHECK / FK как вторая\nлиния защиты", shape=cylinder];
+  u -> js -> api -> v; v -> e [label="ошибки"]; v -> ins [label="данные корректны"]; ins -> db [dir=both, style=dashed]; ins -> ok; e -> ui1; ok -> ui2;
+}

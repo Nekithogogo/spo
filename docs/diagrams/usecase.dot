@@ -1,0 +1,23 @@
+digraph UC {
+  rankdir=LR; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=11]; edge [fontname="DejaVu Sans", fontsize=9, arrowhead=none, color="#555555"];
+  admin   [label="Администратор", shape=none, image="", fontsize=12];
+  prod    [label="Продюсер", shape=none, fontsize=12];
+  crew    [label="Член съёмочной\nгруппы\n(режиссёр, оператор,\nмонтажёр)", shape=none, fontsize=12];
+  subgraph cluster_sys {
+    label="ИС «Видеостудия — управление проектами»"; style=rounded; color="#999999"; fontsize=12;
+    node [shape=ellipse, style=filled, fillcolor="#f3f3f7", color="#777777"];
+    uc1 [label="UC-1 Просмотреть\nсписок проектов"];
+    uc2 [label="UC-2 Создать проект"];
+    uc3 [label="UC-3 Открыть карточку\nпроекта"];
+    uc4 [label="UC-4 Добавить задачу\nпо этапу"];
+    uc5 [label="UC-5 Изменить\nстатус задачи"];
+    uc6 [label="Забронировать\nоборудование (v2)", style="filled,dashed"];
+    uc7 [label="Управлять сотрудниками\nи заказчиками (v2)", style="filled,dashed"];
+    val [label="Проверить\nвведённые данные"];
+  }
+  prod -> uc1; prod -> uc2; prod -> uc3; prod -> uc4; prod -> uc5; prod -> uc6;
+  crew -> uc1; crew -> uc3; crew -> uc5;
+  admin -> uc7; admin -> uc1;
+  uc2 -> val [style=dashed, arrowhead=vee, label="«include»"];
+  uc4 -> val [style=dashed, arrowhead=vee, label="«include»"];
+}

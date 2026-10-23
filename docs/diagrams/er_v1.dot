@@ -1,0 +1,14 @@
+digraph ER1 {
+  rankdir=LR; fontname="DejaVu Sans"; node [shape=plain, fontname="DejaVu Sans", fontsize=10]; edge [fontname="DejaVu Sans", fontsize=9, color="#555555"];
+  users [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#e8e8ef"><b>Сотрудник (users)</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">ФИО</td></tr><tr><td align="left">e-mail</td></tr><tr><td align="left">телефон</td></tr><tr><td align="left">должность</td></tr></table>>];
+  clients [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#e8e8ef"><b>Заказчик (clients)</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">название</td></tr><tr><td align="left">контактное лицо</td></tr><tr><td align="left">телефон, e-mail</td></tr></table>>];
+  projects [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#e8e8ef"><b>Проект (projects)</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">FK client_id</td></tr><tr><td align="left">название, тип</td></tr><tr><td align="left">статус</td></tr><tr><td align="left">бюджет</td></tr><tr><td align="left">дата начала, дедлайн</td></tr></table>>];
+  members [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#fbe9e9"><b>Участник проекта</b></td></tr><tr><td align="left">PK,FK project_id</td></tr><tr><td align="left">PK,FK user_id</td></tr><tr><td align="left">роль в проекте</td></tr></table>>];
+  tasks [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#e8e8ef"><b>Задача (tasks)</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">FK project_id</td></tr><tr><td align="left">FK assignee_id</td></tr><tr><td align="left">название, статус</td></tr><tr><td align="left">срок</td></tr></table>>];
+  equipment [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#e8e8ef"><b>Оборудование</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">название, категория</td></tr><tr><td align="left">инв. номер</td></tr><tr><td align="left">доступно (да/нет)</td></tr></table>>];
+  bookings [label=<<table border="0" cellborder="1" cellspacing="0" cellpadding="4"><tr><td bgcolor="#fbe9e9"><b>Бронь оборудования</b></td></tr><tr><td align="left">PK id</td></tr><tr><td align="left">FK equipment_id</td></tr><tr><td align="left">FK project_id</td></tr><tr><td align="left">дата съёмки</td></tr></table>>];
+  clients -> projects [label="1 : N"];
+  projects -> members [label="1 : N"]; users -> members [label="1 : N"];
+  projects -> tasks [label="1 : N"]; users -> tasks [label="1 : N\nисполнитель"];
+  equipment -> bookings [label="1 : N"]; projects -> bookings [label="1 : N"];
+}

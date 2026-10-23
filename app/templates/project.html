@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Проект{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('pages.projects_page') }}">← Все проекты</a>
+<div id="project-state" class="state">Загрузка…</div>
+
+<div id="project" data-id="{{ project_id }}" hidden>
+  <div class="page-head">
+    <h1 id="p-title"></h1>
+    <span id="p-status" class="badge"></span>
+  </div>
+  <dl class="facts">
+    <div><dt>Заказчик</dt><dd id="p-client"></dd></div>
+    <div><dt>Продюсер</dt><dd id="p-producer"></dd></div>
+    <div><dt>Тип</dt><dd id="p-type"></dd></div>
+    <div><dt>Бюджет</dt><dd id="p-budget"></dd></div>
+    <div><dt>Сроки</dt><dd id="p-dates"></dd></div>
+  </dl>
+  <p><span class="muted">Съёмочная группа:</span> <span id="p-members"></span></p>
+  <p id="p-description" class="muted"></p>
+
+  <div class="layout">
+    <section>
+      <h2>Задачи по этапам</h2>
+      <div id="tasks-board" class="board"></div>
+    </section>
+    <aside class="card">
+      <h2>Новая задача</h2>
+      <form id="task-form" novalidate>
+        <label>Задача*<input name="title" maxlength="200" required></label>
+        <label>Этап<select name="stage"></select></label>
+        <label>Исполнитель<select name="assignee_id"><option value="">— не назначен —</option></select></label>
+        <label>Срок<input name="due_date" type="date"></label>
+        <div class="form-errors" id="task-errors"></div>
+        <button type="submit">Добавить</button>
+      </form>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/project.js') }}"></script>{% endblock %}

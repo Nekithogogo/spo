@@ -1,0 +1,16 @@
+digraph A {
+  rankdir=TB; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=11, shape=box, style="rounded,filled", fillcolor="#f3f3f7", color="#777777"]; edge [fontname="DejaVu Sans", fontsize=9];
+  browser [label="Браузер\nHTML + CSS + JavaScript\n(fetch)"];
+  subgraph cluster_app { label="Монолитное приложение Flask (Python)"; style=rounded; color="#d6322f"; fontsize=11;
+    pages [label="pages.py\nHTML-страницы (Jinja2)"];
+    api [label="api.py\nREST-маршруты /api"];
+    svc [label="services.py\nвалидация и\nбизнес-операции"];
+    dbm [label="db.py\nподключение psycopg2"];
+    err [label="errors.py\nединые ответы\nоб ошибках"];
+    api -> svc -> dbm; api -> err [style=dotted, arrowhead=none];
+  }
+  pg [label="PostgreSQL 16\nБД studio", shape=cylinder];
+  browser -> pages [label="GET / (HTML)"];
+  browser -> api [label="HTTP + JSON"];
+  dbm -> pg [label="SQL (TCP 5432)"];
+}

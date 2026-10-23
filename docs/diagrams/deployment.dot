@@ -1,0 +1,15 @@
+digraph D {
+  rankdir=LR; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f3f3f7", color="#777777"]; edge [fontname="DejaVu Sans", fontsize=9];
+  user [label="Браузер тестировщика\nhttp://127.0.0.1:8080"];
+  subgraph cluster_host { label="Хост / учебная ВМ (Docker Engine)"; style=rounded; color="#999999";
+    subgraph cluster_net { label="сеть docker compose (spo_default)"; style="rounded,dashed"; color="#bbbbbb";
+      app [label="контейнер app\npython:3.12-slim + gunicorn (2 воркера)\nпользователь studio (uid 10001)\nread-only FS, :8000"];
+      db [label="контейнер db\npostgres:16-alpine\n:5432 (только внутри сети)", shape=box];
+    }
+    vol [label="том pgdata\n(данные БД)", shape=cylinder];
+    env [label=".env (секреты,\nне в git)", shape=note];
+  }
+  user -> app [label="127.0.0.1:8080 → 8000"];
+  app -> db [label="роль studio_app\n(только DML)"];
+  db -> vol; env -> app [style=dashed]; env -> db [style=dashed];
+}

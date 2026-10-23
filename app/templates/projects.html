@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Проекты{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Проекты</h1>
+  <label class="filter">Статус
+    <select id="status-filter">
+      <option value="">Все</option>
+    </select>
+  </label>
+</div>
+
+<div class="layout">
+  <section>
+    <div id="projects-state" class="state">Загрузка…</div>
+    <table class="grid" id="projects-table" hidden>
+      <thead>
+        <tr><th>Проект</th><th>Заказчик</th><th>Продюсер</th><th>Статус</th><th>Дедлайн</th><th>Задачи</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <aside class="card">
+    <h2>Новый проект</h2>
+    <form id="project-form" novalidate>
+      <label>Название*<input name="title" maxlength="200" required></label>
+      <label>Заказчик*<select name="client_id" required></select></label>
+      <label>Продюсер<select name="producer_id"><option value="">— не назначен —</option></select></label>
+      <label>Тип<select name="project_type"></select></label>
+      <label>Бюджет, ₽<input name="budget" type="number" min="0" step="1000" value="0"></label>
+      <div class="row">
+        <label>Начало<input name="start_date" type="date"></label>
+        <label>Дедлайн<input name="deadline" type="date"></label>
+      </div>
+      <label>Описание<textarea name="description" rows="3"></textarea></label>
+      <div class="form-errors" id="project-errors"></div>
+      <button type="submit">Создать проект</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/projects.js') }}"></script>{% endblock %}
