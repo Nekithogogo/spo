@@ -1,0 +1,37 @@
+# Правила оповещений. Активные оповещения видны в Prometheus: Status → Alerts (http://127.0.0.1:9090/alerts).
+groups:
+  - name: studio
+    rules:
+      - alert: AppDown
+        expr: up{job="studio-app"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "Приложение не отвечает на /api/metrics больше минуты" }
+
+      - alert: DatabaseDown
+        expr: studio_db_up == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: "Приложение работает, но БД недоступна" }
+
+      - alert: HighErrorRate
+        expr: sum(rate(studio_http_requests_total{status=~"5.."}[5m])) / sum(rate(studio_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Больше 5% ответов с кодом 5xx за 5 минут" }
+
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(studio_http_request_duration_seconds_bucket[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "95-й перцентиль времени ответа выше 500 мс (NFR-01)" }
+
+      - alert: LoginBruteforce
+        expr: sum(increase(studio_login_total{result="fail"}[10m])) > 30
+        labels: { severity: warning }
+        annotations: { summary: "Много неудачных входов: возможен подбор паролей" }
+
+      - alert: AppRestarted
+        expr: min(studio_process_uptime_seconds) < 120
+        labels: { severity: info }
+        annotations: { summary: "Процесс приложения недавно перезапускался" }

@@ -1,5 +1,12 @@
-# Тестовое окружение: приложение + PostgreSQL в контейнерах.
-# Запуск: cp .env.example .env && docker compose up -d --build
+# Окружение версии 2.0: PostgreSQL, миграции, приложение, обратный прокси nginx с HTTPS.
+# Запуск:  cp .env.example .env  &&  ./deploy/gen-cert.sh  &&  docker compose up -d --build
+# Мониторинг (Prometheus): docker compose --profile monitoring up -d
+name: studio
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
 services:
   db:
     image: postgres:16-alpine
@@ -13,35 +20,95 @@ services:
       PGTZ: Europe/Moscow
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/02_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      # при первом запуске создаётся только роль приложения; схему создают миграции
       - ./db/03_app_role.sh:/docker-entrypoint-initdb.d/03_app_role.sh:ro
-    # порт БД наружу не публикуется: доступ только из сети compose
+    # порт БД наружу не публикуется: доступ только из внутренней сети
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    logging: &logging
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+    shm_size: 128mb
+    logging: *logging
+
+  # Одноразовый запуск: применяет новые миграции ролью-владельцем схемы и завершается.
+  migrate:
+    image: studio-app:${APP_VERSION:-2.0.0}
+    build: { context: ., args: { APP_VERSION: "${APP_VERSION:-2.0.0}" } }
+    command: ["python", "-m", "app.manage", "migrate", "${SEED_FLAG:---seed}"]
+    environment:
+      MIGRATE_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [backend]
+    restart: "no"
+    logging: *logging
 
   app:
-    build: .
+    image: studio-app:${APP_VERSION:-2.0.0}
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     environment:
+      APP_ENV: production
       DATABASE_URL: postgresql://studio_app:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB}
       SECRET_KEY: ${SECRET_KEY}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    ports:
-      - "127.0.0.1:${APP_PORT:-8080}:8000"   # только локальный интерфейс хоста
+      LOG_FORMAT: json
+      TRUSTED_PROXIES: 1
+      TZ: Europe/Moscow
+    # порт приложения не публикуется: запросы приходят только через nginx
+    networks: [backend, frontend]
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
     logging: *logging
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app: { condition: service_healthy }
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+      - "${HTTP_BIND:-127.0.0.1}:${HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./deploy/nginx/studio.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+    networks: [frontend]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --no-check-certificate https://127.0.0.1/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"   # только локально (через SSH-туннель)
+    networks: [frontend]
+    logging: *logging
+
+networks:
+  frontend:
+  backend:
+    internal: true   # сеть БД не имеет выхода наружу
 
 volumes:
   pgdata:
+  promdata:

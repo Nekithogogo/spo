@@ -1,0 +1,26 @@
+digraph D2 {
+  rankdir=LR; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f3f3f7", color="#777777"]; edge [fontname="DejaVu Sans", fontsize=9];
+  user [label="Браузер / клиент API\nhttps://studio.example.ru"];
+  admin [label="Администратор\nSSH по ключу", fillcolor="#fff1d6"];
+  subgraph cluster_host { label="Сервер Ubuntu 24.04 LTS · ufw: 22, 80, 443 · пользователь deploy"; style=rounded; color="#999999";
+    subgraph cluster_front { label="сеть frontend"; style="rounded,dashed"; color="#bbbbbb";
+      proxy [label="proxy\nnginx 1.27\nTLS 1.2/1.3, HSTS, rate limit\n:80 → :443", fillcolor="#e6eefc"];
+      prom [label="prometheus\n(profile monitoring)\n127.0.0.1:9090", fillcolor="#fff1d6"];
+    }
+    subgraph cluster_back { label="сеть backend (internal, без выхода наружу)"; style="rounded,dashed"; color="#bbbbbb";
+      app [label="app · studio-app:2.0.0\ngunicorn 2×2, uid 10001\nread-only FS, cap_drop ALL\n512 МБ / 1 CPU", fillcolor="#e6f4ea"];
+      mig [label="migrate (одноразовый)\npython -m app.manage migrate", style="rounded,dashed,filled"];
+      db [label="db · postgres:16-alpine\n:5432 только внутри"];
+    }
+    vol [label="том pgdata", shape=cylinder];
+    bak [label="backups/\npg_dump -Fc, 14 копий", shape=folder];
+    cron [label="cron: backup.sh 03:00\nmonitor.sh */5 мин", shape=note];
+  }
+  user -> proxy [label="HTTPS 443"];
+  admin -> cron [style=dashed, label="ssh"];
+  proxy -> app [label="HTTP :8000\nX-Request-ID"];
+  prom -> app [label="/api/metrics"];
+  mig -> db [label="studio_owner (DDL)"];
+  app -> db [label="studio_app (DML)"];
+  db -> vol; cron -> bak [style=dashed]; bak -> db [style=dashed, dir=back, label="pg_dump"];
+}

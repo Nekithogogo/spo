@@ -6,9 +6,16 @@
   <title>{% block title %}Видеостудия{% endblock %} · Управление проектами</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="topbar">
     <a class="brand" href="{{ url_for('pages.projects_page') }}"><b class="dot">●</b> REC <span>Видеостудия · проекты</span></a>
+    <nav class="nav" id="nav" hidden>
+      <a href="{{ url_for('pages.projects_page') }}">Проекты</a>
+      <a href="{{ url_for('pages.workload_page') }}" data-roles="admin producer">Загрузка</a>
+      <a href="/api/docs" target="_blank" rel="noopener">API</a>
+      <span class="user" id="nav-user"></span>
+      <button type="button" class="link" id="logout">Выйти</button>
+    </nav>
   </header>
   <main class="container">
     {% block content %}{% endblock %}

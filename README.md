@@ -4,34 +4,41 @@
 
 Монолитное веб-приложение: **Python 3 + Flask**, **PostgreSQL 16**, HTML-шаблоны Jinja2 и JavaScript (fetch API). Развёртывание: **Docker Compose** + gunicorn.
 
-## Возможности первой версии (MVP)
+## Возможности (версия 2.0)
 
-- список проектов с фильтром по статусу и прогрессом задач;
-- создание проекта с проверкой данных на сервере;
-- карточка проекта: заказчик, продюсер, бюджет, сроки, съёмочная группа;
-- задачи по этапам «Препродакшн → Съёмка → Постпродакшн → Согласование», добавление задачи и смена её статуса;
-- REST API в формате JSON, справочники заказчиков, сотрудников и оборудования.
+- вход по e-mail и паролю, роли: администратор, продюсер, режиссёр, оператор, монтажёр;
+- список проектов с фильтром по статусу, поиском и постраничным выводом;
+- создание и редактирование проекта, перевод по этапам «Новый → Препродакшн → Съёмка → Постпродакшн → Согласование → Сдан» с историей;
+- задачи по этапам: добавление, редактирование, смена статуса исполнителем, удаление;
+- съёмочная группа проекта и бронирование оборудования без пересечений по времени;
+- отчёт о загрузке сотрудников;
+- REST API 2.0 (31 операция) со спецификацией OpenAPI и Swagger UI;
+- миграции БД, HTTPS через nginx, метрики Prometheus, резервное копирование и восстановление.
+
+История изменений: [CHANGELOG.md](CHANGELOG.md).
 
 ## Структура репозитория
 
 ```
-app/                 приложение Flask
-  __init__.py        фабрика приложения, конфигурация из переменных среды
-  db.py              подключение к PostgreSQL
-  services.py        бизнес-операции и валидация
-  api.py             REST-маршруты /api/...
-  pages.py           HTML-страницы
-  errors.py          единая обработка ошибок (400/404/409/503/500)
-  templates/, static/ интерфейс
+app/                   приложение Flask
+  __init__.py          фабрика приложения, конфигурация из переменных среды
+  auth.py              вход, токены, роли
+  api.py               REST-маршруты /api/...
+  services.py          бизнес-операции и валидация
+  manage.py            миграции БД и служебные команды
+  observability.py     журнал JSON, метрики, health-check
+  security.py          заголовки безопасности
+  openapi.yaml         спецификация API
+  db.py, errors.py, pages.py, templates/, static/
 db/
-  01_schema.sql      схема БД (таблицы, ограничения, индексы)
-  02_seed.sql        тестовые данные
-  03_app_role.sh     роль приложения с минимальными правами (Docker)
-  04_checks.sql      проверочные запросы и проверка ограничений
-deploy/smoke.sh      smoke-тест развёрнутой версии
-tests/               автотесты API (pytest, реальная БД)
-docs/                диаграммы, скриншоты, отчёты по практическим работам
-Dockerfile, docker-compose.yml, gunicorn.conf.py, .env.example
+  migrations/          0001_initial … 0004_tasks_and_reports
+  seed.sql             демонстрационные данные (пароль studio2026)
+  03_app_role.sh       роль приложения с минимальными правами (Docker)
+  04_checks.sql        проверочные запросы и проверка ограничений
+deploy/                nginx, сертификат, release/backup/restore/monitor/smoke, SERVER.md
+monitoring/            конфигурация и правила оповещений Prometheus
+tests/                 65 автотестов (pytest, реальная БД)
+docs/                  диаграммы, скриншоты, отчёты по практическим работам
 ```
 
 ## Локальный запуск (среда разработки)
@@ -44,14 +51,13 @@ source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 
 createdb studio
-psql -d studio -f db/01_schema.sql
-psql -d studio -f db/02_seed.sql
-
 export DATABASE_URL=postgresql://postgres:ПАРОЛЬ@localhost:5432/studio   # Windows: set DATABASE_URL=...
-flask --app wsgi run                 # http://127.0.0.1:5000
+python -m app.manage migrate --seed  # миграции + демонстрационные данные
+python -m app.manage status          # какие миграции применены
+flask --app wsgi run                 # http://127.0.0.1:5000, вход: kuznetsov@studio.local / studio2026
 ```
 
-Тесты (используют отдельную БД, которая пересоздаётся перед каждым тестом):
+Тесты (отдельная БД, пересоздаётся перед каждым тестом):
 
 ```bash
 createdb studio_test
@@ -63,26 +69,21 @@ pytest -q
 
 ```bash
 cp .env.example .env                 # задать свои пароли
-docker compose up -d --build
-./deploy/smoke.sh                    # http://127.0.0.1:8080
-docker compose logs -f app           # журнал приложения
+./deploy/gen-cert.sh                 # самоподписанный сертификат для HTTPS
+docker compose up -d --build         # db → migrate → app → proxy
+./deploy/smoke.sh                    # https://127.0.0.1:8443
+docker compose --profile monitoring up -d   # Prometheus: http://127.0.0.1:9090
 ```
 
-Порт БД наружу не публикуется, приложение слушает только `127.0.0.1:8080`, работает от непривилегированного пользователя и подключается к БД ролью `studio_app` без прав на изменение схемы.
+Выпуск версии: `./deploy/release.sh 2.0.0`, резервная копия: `./deploy/backup.sh`,
+восстановление: `./deploy/restore.sh backups/<файл>.dump`, проверка стенда: `./deploy/monitor.sh`.
+Подготовка рабочего сервера описана в [deploy/SERVER.md](deploy/SERVER.md).
 
-## REST API (MVP)
+## REST API
 
-| Метод | Путь | Назначение | Коды |
-|---|---|---|---|
-| GET | `/api/health` | состояние приложения и БД | 200, 503 |
-| GET | `/api/projects?status=` | список проектов | 200, 400 |
-| POST | `/api/projects` | создать проект | 201, 400 |
-| GET | `/api/projects/{id}` | карточка проекта с задачами | 200, 404 |
-| GET | `/api/projects/{id}/tasks` | задачи проекта | 200, 404 |
-| POST | `/api/projects/{id}/tasks` | добавить задачу | 201, 400, 404 |
-| PATCH | `/api/tasks/{id}` | сменить статус задачи | 200, 400, 404 |
-| GET | `/api/clients`, `/api/users?role=`, `/api/equipment` | справочники | 200 |
+Документация: `/api/docs` (Swagger UI), спецификация `/api/openapi.json`. Все ресурсы, кроме health и
+документации, требуют заголовок `Authorization: Bearer <токен>` из `POST /api/auth/login`.
 
 ## Отчёты
 
-Отчёты по практическим работам лежат в `docs/reports/`.
+Отчёты по практическим работам лежат в `docs/reports/` (исходники `prNN.md`, сборка в Word: `python docs/reports/build.py`).

@@ -13,6 +13,17 @@ class ValidationError(Exception):
         self.errors = errors
 
 
+class ApiError(Exception):
+    """Ошибка с HTTP-кодом и сообщением для клиента (401, 403, 409, 412, 429...)."""
+
+    def __init__(self, status, message, details=None, headers=None):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+        self.details = details
+        self.headers = headers or {}
+
+
 class NotFound(Exception):
     def __init__(self, message="Объект не найден"):
         super().__init__(message)
@@ -30,6 +41,11 @@ def register_error_handlers(app):
     @app.errorhandler(ValidationError)
     def _validation(e):
         return error_response(400, "Ошибка валидации", e.errors)
+
+    @app.errorhandler(ApiError)
+    def _api_error(e):
+        body, status = error_response(e.status, e.message, e.details)
+        return body, status, e.headers
 
     @app.errorhandler(NotFound)
     def _not_found(e):
@@ -49,7 +65,12 @@ def register_error_handlers(app):
     @app.errorhandler(HTTPException)
     def _http(e):
         if request.path.startswith("/api/"):
-            messages = {404: "Ресурс не найден", 405: "Метод не поддерживается"}
+            messages = {
+                404: "Ресурс не найден",
+                405: "Метод не поддерживается",
+                413: "Слишком большой запрос",
+                415: "Ожидается Content-Type: application/json",
+            }
             return error_response(e.code, messages.get(e.code, e.name))
         return e
 

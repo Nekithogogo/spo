@@ -7,3 +7,5 @@ venv/
 backups/
 *.log
 docs/reports/reference.docx
+deploy/nginx/certs/
+deploy/.release

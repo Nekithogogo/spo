@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Вход{% endblock %}
+{% block body_class %}public{% endblock %}
+{% block content %}
+<section class="card login">
+  <h1>Вход</h1>
+  <p class="muted">Учётную запись выдаёт администратор студии.</p>
+  <form id="login-form" novalidate>
+    <label>E-mail<input name="email" type="email" autocomplete="username" required></label>
+    <label>Пароль<input name="password" type="password" autocomplete="current-password" required></label>
+    <div class="form-errors" id="login-errors"></div>
+    <button type="submit">Войти</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/login.js') }}"></script>{% endblock %}

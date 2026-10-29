@@ -3,14 +3,17 @@
 {% block content %}
 <div class="page-head">
   <h1>Проекты</h1>
-  <label class="filter">Статус
-    <select id="status-filter">
-      <option value="">Все</option>
-    </select>
-  </label>
+  <div class="filters">
+    <label class="filter">Поиск<input id="search" type="search" maxlength="100" placeholder="название"></label>
+    <label class="filter">Статус
+      <select id="status-filter">
+        <option value="">Все</option>
+      </select>
+    </label>
+  </div>
 </div>
 
-<div class="layout">
+<div class="layout" id="projects-layout">
   <section>
     <div id="projects-state" class="state">Загрузка…</div>
     <table class="grid" id="projects-table" hidden>
@@ -19,9 +22,14 @@
       </thead>
       <tbody></tbody>
     </table>
+    <div class="pager" id="pager" hidden>
+      <button type="button" class="secondary" id="prev">← Назад</button>
+      <span class="muted" id="page-info"></span>
+      <button type="button" class="secondary" id="next">Дальше →</button>
+    </div>
   </section>
 
-  <aside class="card">
+  <aside class="card" id="project-create" data-roles="admin producer" hidden>
     <h2>Новый проект</h2>
     <form id="project-form" novalidate>
       <label>Название*<input name="title" maxlength="200" required></label>

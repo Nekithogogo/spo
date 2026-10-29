@@ -7,8 +7,16 @@
 <div id="project" data-id="{{ project_id }}" hidden>
   <div class="page-head">
     <h1 id="p-title"></h1>
-    <span id="p-status" class="badge"></span>
+    <div class="status-box">
+      <span id="p-status" class="badge"></span>
+      <form id="status-form" class="inline" data-manage hidden>
+        <select name="status" aria-label="Новый статус"></select>
+        <input name="status_comment" maxlength="500" placeholder="комментарий">
+        <button type="submit" class="small">Перевести</button>
+      </form>
+    </div>
   </div>
+  <div class="form-errors" id="status-errors"></div>
   <dl class="facts">
     <div><dt>Заказчик</dt><dd id="p-client"></dd></div>
     <div><dt>Продюсер</dt><dd id="p-producer"></dd></div>
@@ -16,15 +24,45 @@
     <div><dt>Бюджет</dt><dd id="p-budget"></dd></div>
     <div><dt>Сроки</dt><dd id="p-dates"></dd></div>
   </dl>
-  <p><span class="muted">Съёмочная группа:</span> <span id="p-members"></span></p>
   <p id="p-description" class="muted"></p>
 
   <div class="layout">
     <section>
       <h2>Задачи по этапам</h2>
       <div id="tasks-board" class="board"></div>
+
+      <div class="two-cols">
+        <section class="card">
+          <h2>Съёмочная группа</h2>
+          <ul id="members" class="list"></ul>
+          <form id="member-form" class="inline-form" data-manage hidden novalidate>
+            <select name="user_id" aria-label="Сотрудник"></select>
+            <input name="role_in_project" maxlength="50" placeholder="роль в проекте">
+            <button type="submit" class="small">Добавить</button>
+          </form>
+          <div class="form-errors" id="member-errors"></div>
+        </section>
+        <section class="card">
+          <h2>Оборудование</h2>
+          <ul id="bookings" class="list"></ul>
+          <form id="booking-form" data-manage hidden novalidate>
+            <label>Оборудование<select name="equipment_id"></select></label>
+            <div class="row">
+              <label>С<input name="starts_at" type="datetime-local"></label>
+              <label>По<input name="ends_at" type="datetime-local"></label>
+            </div>
+            <div class="form-errors" id="booking-errors"></div>
+            <button type="submit" class="small">Забронировать</button>
+          </form>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>История статусов</h2>
+        <ul id="history" class="list history"></ul>
+      </section>
     </section>
-    <aside class="card">
+    <aside class="card" id="task-create" data-roles="admin producer director" hidden>
       <h2>Новая задача</h2>
       <form id="task-form" novalidate>
         <label>Задача*<input name="title" maxlength="200" required></label>

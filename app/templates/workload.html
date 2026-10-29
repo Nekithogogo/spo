@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Загрузка сотрудников{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Загрузка сотрудников</h1>
+  <span class="muted">Открытые задачи по исполнителям</span>
+</div>
+<div id="workload-state" class="state">Загрузка…</div>
+<table class="grid" id="workload-table" hidden>
+  <thead>
+    <tr><th>Сотрудник</th><th>Роль</th><th>Открытые задачи</th><th>В работе</th><th>Просрочено</th><th>Проектов</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/workload.js') }}"></script>{% endblock %}

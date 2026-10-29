@@ -1,4 +1,6 @@
 """Подключение к PostgreSQL: одно соединение на запрос, закрывается в teardown."""
+from contextlib import contextmanager
+
 import psycopg2
 import psycopg2.extras
 from flask import current_app, g
@@ -45,3 +47,16 @@ def execute(sql, params=None, returning=True):
 
 def init_app(app):
     app.teardown_appcontext(close_db)
+
+
+@contextmanager
+def transaction():
+    """Несколько изменений в одной транзакции: фиксируются вместе или откатываются вместе."""
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            yield cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

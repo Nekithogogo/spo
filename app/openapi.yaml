@@ -1,0 +1,757 @@
+openapi: 3.0.3
+info:
+  title: Видеостудия/продакшн — управление проектами
+  version: 2.0.0
+  description: |
+    REST API монолитного веб-приложения видеостудии: проекты, этапы производства, задачи,
+    съёмочная группа, бронирование оборудования, отчёты.
+
+    **Аутентификация.** `POST /api/auth/login` выдаёт токен, который передаётся в заголовке
+    `Authorization: Bearer <токен>`. Срок действия токена 8 часов, `POST /api/auth/logout`
+    отзывает все токены пользователя.
+
+    **Роли.** `admin` — всё; `producer` — создаёт проекты и управляет своими проектами;
+    `director` — ставит задачи; `operator`, `editor` — просмотр и смена статуса своих задач.
+
+    **Ошибки** возвращаются в едином формате `Error`: 400 — ошибка валидации (поля в `details`),
+    401 — нет входа, 403 — нет прав, 404 — не найдено, 409 — конфликт (бронь, переход статуса),
+    412 — объект изменён другим пользователем (If-Match), 413/415 — неверный запрос,
+    429 — превышено число попыток входа, 503 — БД недоступна.
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+tags:
+  - name: Служебные
+  - name: Аутентификация
+  - name: Проекты
+  - name: Съёмочная группа
+  - name: Задачи
+  - name: Бронирование
+  - name: Справочники и отчёты
+
+paths:
+  /health:
+    get:
+      tags: [Служебные]
+      summary: Состояние приложения и БД
+      security: []
+      responses:
+        "200":
+          description: Приложение и БД работают
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: БД недоступна
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /metrics:
+    get:
+      tags: [Служебные]
+      summary: Метрики в формате Prometheus (снаружи закрыто прокси)
+      security: []
+      responses:
+        "200":
+          description: Текстовый формат Prometheus
+          content:
+            text/plain:
+              schema: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /openapi.json:
+    get:
+      tags: [Служебные]
+      summary: Эта спецификация в JSON
+      security: []
+      responses:
+        "200": { description: Спецификация OpenAPI }
+  /openapi.yaml:
+    get:
+      tags: [Служебные]
+      summary: Эта спецификация в YAML
+      security: []
+      responses:
+        "200": { description: Спецификация OpenAPI }
+  /docs:
+    get:
+      tags: [Служебные]
+      summary: Интерактивная документация Swagger UI
+      security: []
+      responses:
+        "200": { description: HTML-страница }
+
+  /auth/login:
+    post:
+      tags: [Аутентификация]
+      summary: Вход по e-mail и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: kuznetsov@studio.local }
+                password: { type: string, format: password, example: studio2026 }
+      responses:
+        "200":
+          description: Токен выдан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  token_type: { type: string, example: Bearer }
+                  expires_in: { type: integer, example: 28800 }
+                  user: { $ref: "#/components/schemas/CurrentUser" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429":
+          description: Слишком много неудачных попыток (5 на e-mail или 20 на IP за 15 минут)
+          headers:
+            Retry-After: { schema: { type: integer }, description: Через сколько секунд повторить }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /auth/logout:
+    post:
+      tags: [Аутентификация]
+      summary: Выход (отзыв всех токенов пользователя)
+      responses:
+        "204": { description: Токены отозваны }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/me:
+    get:
+      tags: [Аутентификация]
+      summary: Текущий пользователь
+      responses:
+        "200":
+          description: Данные пользователя
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /projects:
+    get:
+      tags: [Проекты]
+      summary: Список проектов с фильтром, поиском и постраничным выводом
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ProjectStatus" } }
+        - { name: q, in: query, description: Подстрока названия, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 0, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Проекты, отсортированные по дедлайну
+          headers:
+            X-Total-Count: { schema: { type: integer }, description: Всего проектов по фильтру }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProjectSummary" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Проекты]
+      summary: Создать проект (admin, producer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectInput" }
+      responses:
+        "201":
+          description: Проект создан со статусом new
+          headers:
+            Location: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+  /projects/{project_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Проекты]
+      summary: Карточка проекта с задачами и группой
+      responses:
+        "200":
+          description: Проект
+          headers:
+            ETag: { schema: { type: string }, description: Версия для If-Match }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Проекты]
+      summary: Изменить проект или перевести на другой этап (admin, продюсер проекта)
+      description: |
+        Передаются только изменяемые поля. Смена `status` подчиняется правилам переходов
+        (`allowed_transitions` в карточке); перевод в `done` невозможен при незакрытых задачах.
+        Заголовок `If-Match` со значением ETag защищает от перезаписи чужих изменений.
+      parameters:
+        - { name: If-Match, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/ProjectInputPartial"
+                - type: object
+                  properties:
+                    status: { $ref: "#/components/schemas/ProjectStatus" }
+                    status_comment: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Обновлённый проект
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412":
+          description: Проект изменён другим пользователем
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Проекты]
+      summary: Удалить проект вместе с задачами и бронями (admin)
+      responses:
+        "204": { description: Удалён }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /projects/{project_id}/history:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Проекты]
+      summary: История смены статусов
+      responses:
+        "200":
+          description: Записи от новых к старым
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/HistoryEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /projects/{project_id}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Съёмочная группа]
+      summary: Состав группы проекта
+      responses:
+        "200":
+          description: Участники
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Member" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /projects/{project_id}/members/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - { name: user_id, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Съёмочная группа]
+      summary: Добавить сотрудника в группу или сменить его роль (идемпотентно)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_in_project]
+              properties:
+                role_in_project: { type: string, maxLength: 50, example: Оператор }
+      responses:
+        "200":
+          description: Роль обновлена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "201":
+          description: Сотрудник добавлен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Съёмочная группа]
+      summary: Исключить сотрудника из группы
+      responses:
+        "204": { description: Исключён }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /projects/{project_id}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Задачи]
+      summary: Задачи проекта по этапам
+      responses:
+        "200":
+          description: Задачи
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Задачи]
+      summary: Добавить задачу (admin, producer, director)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+      responses:
+        "201":
+          description: Задача создана со статусом todo
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /tasks/{task_id}:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Задачи]
+      summary: Задача
+      responses:
+        "200":
+          description: Задача
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Задачи]
+      summary: Изменить задачу (исполнитель может менять только status)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TaskInput"
+                - type: object
+                  properties:
+                    status: { $ref: "#/components/schemas/TaskStatus" }
+      responses:
+        "200":
+          description: Обновлённая задача
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Задачи]
+      summary: Удалить задачу (admin, продюсер проекта)
+      responses:
+        "204": { description: Удалена }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /projects/{project_id}/bookings:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Бронирование]
+      summary: Брони оборудования проекта
+      responses:
+        "200":
+          description: Брони по времени начала
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Booking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Бронирование]
+      summary: Забронировать оборудование (без пересечений по времени)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingInput" }
+      responses:
+        "201":
+          description: Бронь создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /bookings/{booking_id}:
+    parameters:
+      - { name: booking_id, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Бронирование]
+      summary: Отменить бронь
+      responses:
+        "204": { description: Отменена }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /equipment/{equipment_id}/bookings:
+    parameters:
+      - { name: equipment_id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Бронирование]
+      summary: Занятость единицы оборудования за период
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Брони, пересекающие период
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Booking" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /clients:
+    get:
+      tags: [Справочники и отчёты]
+      summary: Заказчики
+      responses:
+        "200":
+          description: Список заказчиков
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    name: { type: string }
+                    contact_person: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users:
+    get:
+      tags: [Справочники и отчёты]
+      summary: Активные сотрудники
+      parameters:
+        - { name: role, in: query, schema: { $ref: "#/components/schemas/UserRole" } }
+      responses:
+        "200":
+          description: Сотрудники
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Справочники и отчёты]
+      summary: Создать учётную запись сотрудника (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, email, password]
+              properties:
+                full_name: { type: string, maxLength: 150 }
+                email: { type: string, format: email }
+                role: { $ref: "#/components/schemas/UserRole" }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        "201":
+          description: Сотрудник создан
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUser" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /equipment:
+    get:
+      tags: [Справочники и отчёты]
+      summary: Оборудование студии
+      responses:
+        "200":
+          description: Оборудование
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    name: { type: string }
+                    category: { type: string, enum: [camera, lens, light, sound, grip, other] }
+                    inventory_number: { type: string }
+                    is_available: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /reports/workload:
+    get:
+      tags: [Справочники и отчёты]
+      summary: Загрузка сотрудников (admin, producer)
+      responses:
+        "200":
+          description: Открытые, текущие и просроченные задачи по сотрудникам
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workload" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Токен из POST /auth/login
+  parameters:
+    ProjectId: { name: project_id, in: path, required: true, schema: { type: integer } }
+    TaskId: { name: task_id, in: path, required: true, schema: { type: integer } }
+  responses:
+    ValidationError:
+      description: Ошибка валидации, сообщения по полям в details
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: Ошибка валидации, details: { title: Укажите название проекта } }
+    Unauthorized:
+      description: Требуется вход или токен недействителен
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Объект не найден
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Конфликт с текущим состоянием (пересечение брони, недопустимый переход статуса)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnsupportedMediaType:
+      description: Тело запроса не JSON
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        details:
+          type: object
+          additionalProperties: { type: string }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, fail] }
+        db: { type: string, enum: [ok, unavailable] }
+        version: { type: string, example: 2.0.0 }
+        schema: { type: string, example: "0004" }
+        db_ms: { type: number }
+        uptime_s: { type: integer }
+    ProjectStatus:
+      type: string
+      enum: [new, preproduction, shooting, postproduction, review, done, cancelled]
+    ProjectType:
+      type: string
+      enum: [commercial, music_video, corporate, event, documentary, other]
+    TaskStage:
+      type: string
+      enum: [preproduction, shooting, postproduction, review]
+    TaskStatus:
+      type: string
+      enum: [todo, in_progress, done]
+    UserRole:
+      type: string
+      enum: [admin, producer, director, operator, editor]
+    ProjectInputPartial:
+      type: object
+      properties:
+        title: { type: string, maxLength: 200 }
+        client_id: { type: integer }
+        producer_id: { type: integer, nullable: true }
+        project_type: { $ref: "#/components/schemas/ProjectType" }
+        budget: { type: number, minimum: 0 }
+        start_date: { type: string, format: date, nullable: true }
+        deadline: { type: string, format: date, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true }
+    ProjectInput:
+      allOf:
+        - $ref: "#/components/schemas/ProjectInputPartial"
+        - type: object
+          required: [title, client_id]
+    ProjectSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        project_type: { $ref: "#/components/schemas/ProjectType" }
+        status: { $ref: "#/components/schemas/ProjectStatus" }
+        budget: { type: number }
+        start_date: { type: string, format: date, nullable: true }
+        deadline: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        client_id: { type: integer }
+        client_name: { type: string }
+        producer_id: { type: integer, nullable: true }
+        producer_name: { type: string, nullable: true }
+        tasks_total: { type: integer }
+        tasks_done: { type: integer }
+        updated_at: { type: string, format: date-time }
+    Project:
+      allOf:
+        - $ref: "#/components/schemas/ProjectSummary"
+        - type: object
+          properties:
+            tasks:
+              type: array
+              items: { $ref: "#/components/schemas/Task" }
+            members:
+              type: array
+              items: { $ref: "#/components/schemas/Member" }
+            allowed_transitions:
+              type: array
+              items: { $ref: "#/components/schemas/ProjectStatus" }
+            can_manage: { type: boolean, description: Может ли текущий пользователь изменять проект }
+    HistoryEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        old_status: { allOf: [{ $ref: "#/components/schemas/ProjectStatus" }], nullable: true }
+        new_status: { $ref: "#/components/schemas/ProjectStatus" }
+        changed_at: { type: string, format: date-time }
+        changed_by: { type: integer, nullable: true }
+        changed_by_name: { type: string, nullable: true }
+        comment: { type: string, nullable: true }
+    TaskInput:
+      type: object
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 5000, nullable: true }
+        stage: { $ref: "#/components/schemas/TaskStage" }
+        assignee_id: { type: integer, nullable: true }
+        due_date: { type: string, format: date, nullable: true }
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        project_id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        stage: { $ref: "#/components/schemas/TaskStage" }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        due_date: { type: string, format: date, nullable: true }
+        assignee_id: { type: integer, nullable: true }
+        assignee_name: { type: string, nullable: true }
+    Member:
+      type: object
+      properties:
+        id: { type: integer }
+        full_name: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        role_in_project: { type: string }
+    BookingInput:
+      type: object
+      required: [equipment_id, starts_at, ends_at]
+      properties:
+        equipment_id: { type: integer }
+        starts_at: { type: string, format: date-time, example: "2026-11-20T09:00" }
+        ends_at: { type: string, format: date-time, example: "2026-11-20T18:00" }
+    Booking:
+      type: object
+      properties:
+        id: { type: integer }
+        equipment_id: { type: integer }
+        equipment_name: { type: string }
+        inventory_number: { type: string }
+        project_id: { type: integer }
+        project_title: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        full_name: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+    CurrentUser:
+      type: object
+      properties:
+        id: { type: integer }
+        full_name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+    Workload:
+      type: object
+      properties:
+        user_id: { type: integer }
+        full_name: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        open_tasks: { type: integer }
+        in_progress: { type: integer }
+        overdue: { type: integer }
+        projects: { type: integer }

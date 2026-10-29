@@ -1,0 +1,34 @@
+digraph UC2 {
+  rankdir=LR; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=11]; edge [fontname="DejaVu Sans", fontsize=9, arrowhead=none, color="#555555"];
+  admin [label="Администратор", shape=none, fontsize=12];
+  prod  [label="Продюсер", shape=none, fontsize=12];
+  dir   [label="Режиссёр", shape=none, fontsize=12];
+  crew  [label="Оператор,\nмонтажёр", shape=none, fontsize=12];
+  subgraph cluster_sys {
+    label="ИС «Видеостудия — управление проектами», версия 2.0"; style=rounded; color="#999999"; fontsize=12;
+    node [shape=ellipse, style=filled, fillcolor="#f3f3f7", color="#777777"];
+    login [label="UC-0 Войти в систему", fillcolor="#e6f4ea"];
+    uc1 [label="UC-1 Просмотреть, найти\nпроекты"];
+    uc2 [label="UC-2 Создать проект"];
+    uc3 [label="UC-3 Открыть карточку"];
+    uc4 [label="UC-4 Добавить задачу"];
+    uc5 [label="UC-5 Изменить статус\nсвоей задачи"];
+    uc6 [label="UC-6 Перевести проект\nна следующий этап", fillcolor="#e6f4ea"];
+    uc7 [label="UC-7 Забронировать\nоборудование", fillcolor="#e6f4ea"];
+    uc8 [label="UC-8 Набрать\nсъёмочную группу", fillcolor="#e6f4ea"];
+    uc9 [label="UC-9 Отчёт о загрузке\nсотрудников", fillcolor="#e6f4ea"];
+    uc10 [label="UC-10 Завести\nучётную запись", fillcolor="#e6f4ea"];
+    val [label="Проверить права\nи данные"];
+    chk [label="Проверить пересечение\nброней"];
+    tasks [label="Проверить, что все\nзадачи закрыты"];
+  }
+  prod -> uc1; prod -> uc2; prod -> uc3; prod -> uc6; prod -> uc7; prod -> uc8; prod -> uc9; prod -> uc4;
+  dir -> uc1; dir -> uc3; dir -> uc4; dir -> uc5;
+  crew -> uc1; crew -> uc3; crew -> uc5;
+  admin -> uc10; admin -> uc9;
+  prod -> login; dir -> login; crew -> login; admin -> login;
+  uc2 -> val [style=dashed, arrowhead=vee, label="«include»"];
+  uc4 -> val [style=dashed, arrowhead=vee, label="«include»"];
+  uc7 -> chk [style=dashed, arrowhead=vee, label="«include»"];
+  uc6 -> tasks [style=dashed, arrowhead=vee, label="«include»\n(для «Сдан»)"];
+}

@@ -1,7 +1,13 @@
-def test_health(client):
-    r = client.get("/api/health")
+"""Тесты API версии 1.0 (сценарий MVP). Выполняются от имени администратора и должны проходить
+без изменений и в версии 2.0 — это проверка обратной совместимости API."""
+
+
+def test_health(anon):
+    r = anon.get("/api/health")
+    body = r.get_json()
     assert r.status_code == 200
-    assert r.get_json() == {"status": "ok", "db": "ok"}
+    assert body["status"] == "ok" and body["db"] == "ok"
+    assert body["version"] == "2.0.0" and body["schema"] == "0004"
 
 
 def test_list_projects(client):
