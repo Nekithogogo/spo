@@ -1,6 +1,6 @@
 digraph R {
   rankdir=LR; fontname="DejaVu Sans"; node [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f3f3f7", color="#777777"]; edge [fontname="DejaVu Sans", fontsize=9];
-  tag [label="git tag v2.0.0\nтесты зелёные"]; b [label="1. backup.sh\nкопия БД"]; build [label="2. сборка образа\nstudio-app:2.0.0"];
+  tag [label="код в ветке main\nтесты зелёные"]; b [label="1. backup.sh\nкопия БД"]; build [label="2. сборка образа\nstudio-app:2.0.0"];
   mig [label="3. migrate\n(транзакция на\nкаждую миграцию)"]; up [label="4. замена app\nожидание healthy"];
   smoke [label="5. smoke.sh\n10 проверок"]; ok [label="версия выпущена\ndeploy/.release", fillcolor="#e6f4ea"];
   rb [label="откат: образ\nпредыдущей версии\n(схема совместима)", fillcolor="#fbe9e9"]; rs [label="restore.sh\n(если нужны данные)", fillcolor="#fbe9e9"];
